@@ -31,9 +31,20 @@ def decorator(original_func):
     return deco_factory
 
 
-def countcalls():
+def countcalls(fn):
     '''Decorator that counts calls made to the function decorated.'''
-    return
+
+    def countcalls_wrapper(*args, **kwargs):
+        # print "in  countcalls() -> wrapper()"
+        # print "\tfunc_name=%s()" % fn.func_name
+
+        f = globals()[fn.func_name]
+        f.calls += 1
+
+        return fn(*args, **kwargs)
+
+    fn.calls = 0
+    return update_wrapper(countcalls_wrapper, fn)
 
 
 def memo():
