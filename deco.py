@@ -47,12 +47,23 @@ def countcalls(fn):
     return update_wrapper(countcalls_wrapper, fn)
 
 
-def memo():
+def memo(fn):
     '''
     Memoize a function so that it caches all return values for
     faster future lookups.
     '''
-    return
+
+    def memo_wrapper(*args, **kwargs):
+        args_res = args + tuple(kwargs.viewitems())
+
+        if not memo_wrapper.cache.get(args_res):
+            func_res = fn(*args, **kwargs)
+            memo_wrapper.cache[args_res] = func_res
+
+        return memo_wrapper.cache[args_res]
+
+    memo_wrapper.cache = dict()
+    return update_wrapper(memo_wrapper, fn)
 
 
 def n_ary():
