@@ -14,12 +14,21 @@ def disable():
     return
 
 
-def decorator():
+def decorator(original_func):
     '''
     Decorate a decorator so that it inherits the docstrings
     and stuff from the function it's decorating.
     '''
-    return
+
+    def deco_factory(called_func):
+        def decorator_wrapper(*args, **kwargs):
+            # print "original func name: %s" % original_func.func_name
+            # print "called   func name: %s" % called_func.func_name
+            return called_func(*args, **kwargs)
+
+        return update_wrapper(decorator_wrapper, original_func)
+
+    return deco_factory
 
 
 def countcalls():
@@ -84,7 +93,7 @@ def bar(a, b):
 @trace("####")
 @memo
 def fib(n):
-    return 1 if n <= 1 else fib(n-1) + fib(n-2)
+    return 1 if n <= 1 else fib(n - 1) + fib(n - 2)
 
 
 def main():
