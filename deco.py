@@ -66,12 +66,24 @@ def memo(fn):
     return update_wrapper(memo_wrapper, fn)
 
 
-def n_ary():
+def n_ary(fn):
     '''
     Given binary function f(x, y), return an n_ary function such
     that f(x, y, z) = f(x, f(y,z)), etc. Also allow f(x) = x.
     '''
-    return
+
+    def n_ary_wrapper(*args, **kwargs):
+        largs = len(args)
+        if largs == 2:
+            return fn(*args, **kwargs)
+        elif largs == 1:
+            return fn(*(args[0], 0), **kwargs)
+        elif largs > 2:
+            first, other = args[0], args[1:]
+            other_result = n_ary_wrapper(*other, **kwargs)
+            return fn(*(first, other_result), **kwargs)
+
+    return update_wrapper(n_ary_wrapper, fn)
 
 
 def trace():
