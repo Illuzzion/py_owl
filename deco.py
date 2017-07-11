@@ -86,7 +86,7 @@ def n_ary(fn):
     return update_wrapper(n_ary_wrapper, fn)
 
 
-def trace():
+def trace(pre_str):
     '''Trace calls made to function decorated.
 
     @trace("____")
@@ -106,7 +106,26 @@ def trace():
      <-- fib(3) == 3
 
     '''
-    return
+
+    def pre_str_decorator(fn):
+        pre_str_decorator.start_arg = 0
+
+        def wrapper(*args, **kwargs):
+            prefix = pre_str * pre_str_decorator.start_arg
+            pre_str_decorator.start_arg += 1
+            print "%s --> %s(%d)" % (prefix, fn.func_name, args[0])
+
+            result = fn(*args, **kwargs)
+            pre_str_decorator.start_arg -= 1
+            prefix = pre_str * pre_str_decorator.start_arg
+
+            print "%s <-- %s(%d) == %d" % (prefix, fn.func_name, args[0], result)
+
+            return result
+
+        return update_wrapper(wrapper, fn)
+
+    return pre_str_decorator
 
 
 @memo
