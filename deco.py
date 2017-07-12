@@ -22,8 +22,6 @@ def decorator(original_func):
 
     def deco_factory(called_func):
         def decorator_wrapper(*args, **kwargs):
-            # print "original func name: %s" % original_func.func_name
-            # print "called   func name: %s" % called_func.func_name
             return called_func(*args, **kwargs)
 
         return update_wrapper(decorator_wrapper, original_func)
@@ -35,9 +33,6 @@ def countcalls(fn):
     '''Decorator that counts calls made to the function decorated.'''
 
     def countcalls_wrapper(*args, **kwargs):
-        # print "in  countcalls() -> wrapper()"
-        # print "\tfunc_name=%s()" % fn.func_name
-
         f = globals()[fn.func_name]
         f.calls += 1
 
@@ -108,16 +103,16 @@ def trace(pre_str):
     '''
 
     def pre_str_decorator(fn):
-        pre_str_decorator.start_arg = 0
+        pre_str_decorator.level = 0
 
         def wrapper(*args, **kwargs):
-            prefix = pre_str * pre_str_decorator.start_arg
-            pre_str_decorator.start_arg += 1
+            prefix = pre_str * pre_str_decorator.level
+            pre_str_decorator.level += 1
             print "%s --> %s(%d)" % (prefix, fn.func_name, args[0])
 
             result = fn(*args, **kwargs)
-            pre_str_decorator.start_arg -= 1
-            prefix = pre_str * pre_str_decorator.start_arg
+            pre_str_decorator.level -= 1
+            prefix = pre_str * pre_str_decorator.level
 
             print "%s <-- %s(%d) == %d" % (prefix, fn.func_name, args[0], result)
 

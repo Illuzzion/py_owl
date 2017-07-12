@@ -61,7 +61,7 @@ def html_report(report_template, report_result):
     return factory
 
 
-@html_report("report.html", "my-report.html")
+@html_report("report.html", "report-2017.06.30.html")
 def main():
     arguments = parse_args()
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
@@ -87,7 +87,6 @@ def main():
 
     sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): len(v), reverse=True)
 
-    # Row = namedtuple('table_row', 'url count count_perc time_avg time_max time_med time_perc time_sum')
     results_list = []
 
     for url, time_list in sorted_list[:config['REPORT_SIZE']]:
