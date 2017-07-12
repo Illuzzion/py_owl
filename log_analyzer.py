@@ -3,12 +3,12 @@
 import gzip
 import re
 from argparse import ArgumentParser
+import json
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
-
 
 
 regexp_dict = {
@@ -17,7 +17,6 @@ regexp_dict = {
     'http_x_real_ip': r'(?P<http_x_real_ip>[\S]+)',
     'time_local': r'\[(?P<time_local>.+)\]',
     'request': r'"(?P<request>.+)"',
-    # 'request': r'"(?P<request>\w+\s+\S+\sHTTP/1.[0|1])"',
     'status': r'(?P<status>\d{3})',
     'body_bytes_sent': r'(?P<body_bytes_sent>\d+)',
     'http_referer': r'"(?P<http_referer>\S+)"',
@@ -45,10 +44,20 @@ def parse_args():
     return p.parse_args()
 
 
-def html_template(report_template="report.html", report_result="report-2017.06.30.html"):
-    pass
+def html_report(report_template, report_result):
+    print report_template, report_result
+
+    def factory(fn):
+        def wrapper(*args, **kwargs):
+            func_result = json.dump(fn())
+            return func_result
+
+        return wrapper
+
+    return factory
 
 
+@html_report("report.html", "report-2017.06.30.html")
 def main():
     arguments = parse_args()
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
