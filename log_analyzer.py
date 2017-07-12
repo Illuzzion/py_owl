@@ -10,7 +10,6 @@ from argparse import ArgumentParser
 #                     '$request_time';
 
 
-# ^(?P<remote_addr>\d+\.\d+\.\d+\.\d+)\s+(?P<remote_user>[\S]+)\s+(?P<http_x_real_ip>[\S]+)\s+(?P<time_local>\[.+\])\s+"(?P<request>\w+\s+\S+\sHTTP/1.[0|1])"\s+(?P<status>\d{3})\s+(?P<body_bytes_sent>\d+)\s+"(?P<http_referer>\S+)"\s+"(?P<http_user_agent>[^"]+)"\s+"(?P<http_x_forwarded_for>[^"]+)"\s+"(?P<http_X_REQUEST_ID>[^"]+)"\s+"(?P<http_X_RB_USER>[^"]+)"\s+(?P<request_time>[\.\d]+)$
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -46,50 +45,57 @@ def parse_args():
     return p.parse_args()
 
 
+def html_template(report_template="report.html", report_result="report-2017.06.30.html"):
+    pass
+
+
 def main():
     arguments = parse_args()
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
     regexp_c = re.compile(regexp_str)
-    result_dict = dict()
+    all_results_dict = dict()
     requests_count, requests_time = 0, 0
 
     with gzip.open(arguments.file, 'rb') as f:
         for line in f:
-            try:
-                parse_result = regexp_c.search(line).groupdict()
+            parse_result = regexp_c.search(line).groupdict()
 
-                if parse_result['request'].count(" ") > 1:
-                    _, url, _ = parse_result['request'].split()
-                else:
-                    url = parse_result['request']
+            if parse_result['request'].count(" ") > 1:
+                _, url, _ = parse_result['request'].split()
+            else:
+                url = parse_result['request']
 
-                cur_time = float(parse_result['request_time'])
-
-                url_rec = result_dict.get(url, [])
-                url_rec.append(cur_time)
-                result_dict[url] = url_rec
-            except Exception as e:
-                print e
-                print line
+            url_rec = all_results_dict.get(url, [])
+            url_rec.append(float(parse_result['request_time']))
+            all_results_dict[url] = url_rec
 
             requests_count += 1
-            requests_time += cur_time
+            requests_time += float(parse_result['request_time'])
 
-    sorted_list = sorted(result_dict.iteritems(), key=lambda (k, v): len(v), reverse=True)
+    sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): len(v), reverse=True)
+
+    # Row = namedtuple('table_row', 'url count count_perc time_avg time_max time_med time_perc time_sum')
+    results_list = []
 
     for url, time_list in sorted_list[:config['REPORT_SIZE']]:
         l = len(time_list)
         s = sum(time_list)
         stl = sorted(time_list)
         mediana = stl[l / 2] if l % 2 else (stl[l / 2] + stl[l / 2 - 1]) / 2.0
-        print "%s count=%d, time_sum=%s, time_max=%s, time_min=%s, time_avg=%s, time_med=%s" % (
-            url, l, s, max(time_list), min(time_list), round(s / l, 3), mediana)
 
-        # result_dict = {rec: result_dict[rec] for rec in s[:config['REPORT_SIZE']]}
+        results_list.append(dict(
+            url=url,
+            count=l,
+            count_perc=(l / float(requests_count)) * 100,
+            time_avg=s / l,
+            time_max=max(time_list),
+            time_med=mediana,
+            time_perc=s / requests_time * 100,
+            time_sum=s
+        ))
 
-        # pprint(result_dict)
-    print requests_count, requests_time
+    return results_list
 
 
 if __name__ == "__main__":
-    main()
+    print main()
