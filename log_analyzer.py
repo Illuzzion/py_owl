@@ -16,15 +16,15 @@ regexp_dict = {
     'remote_user': r'(?P<remote_user>[\S]+)',
     'http_x_real_ip': r'(?P<http_x_real_ip>[\S]+)',
     'time_local': r'(?P<time_local>\[.+\])',
-    'request': r'',
-    'status': r'',
-    'body_bytes_sent': r'',
-    'http_referer': r'',
-    'http_user_agent': r'',
-    'http_x_forwarded_for': r'',
-    'http_X_REQUEST_ID': r'',
-    'http_X_RB_USER': r'',
-    'request_time': r''
+    'request': r'"(?P<request>\w+\s+\S+\sHTTP/1.[0|1])"',
+    'status': r'(?P<status>\d{3})',
+    'body_bytes_sent': r'(?P<body_bytes_sent>\d+)',
+    'http_referer': r'"(?P<http_referer>\S+)"',
+    'http_user_agent': r'"(?P<http_user_agent>[^"]+)"',
+    'http_x_forwarded_for': r'"(?P<http_x_forwarded_for>[^"]+)"',
+    'http_X_REQUEST_ID': r'"(?P<http_X_REQUEST_ID>[^"]+)"',
+    'http_X_RB_USER': r'"(?P<http_X_RB_USER>[^"]+)"',
+    'request_time': r'(?P<request_time>[\.\d]+)'
 }
 
 config = {
