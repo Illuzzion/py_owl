@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import gzip
+import json
 import re
 from argparse import ArgumentParser
-import json
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -45,11 +45,15 @@ def parse_args():
 
 
 def html_report(report_template, report_result):
-    print report_template, report_result
-
     def factory(fn):
         def wrapper(*args, **kwargs):
-            func_result = json.dump(fn())
+            func_result = fn(*args, **kwargs)
+            with open(report_template) as rt:
+                t_data = rt.read()
+                t_data = t_data.replace('$table_json', json.dumps(func_result))
+                with open(report_result, 'w') as rr:
+                    rr.write(t_data)
+
             return func_result
 
         return wrapper
@@ -57,7 +61,7 @@ def html_report(report_template, report_result):
     return factory
 
 
-@html_report("report.html", "report-2017.06.30.html")
+@html_report("report.html", "my-report.html")
 def main():
     arguments = parse_args()
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
@@ -95,16 +99,16 @@ def main():
         results_list.append(dict(
             url=url,
             count=l,
-            count_perc=(l / float(requests_count)) * 100,
-            time_avg=s / l,
-            time_max=max(time_list),
-            time_med=mediana,
-            time_perc=s / requests_time * 100,
-            time_sum=s
+            count_perc=round((l / float(requests_count)) * 100, 3),
+            time_avg=round(s / l, 3),
+            time_max=round(max(time_list), 3),
+            time_med=round(mediana, 3),
+            time_perc=round(s / requests_time * 100, 3),
+            time_sum=round(s, 3)
         ))
 
     return results_list
 
 
 if __name__ == "__main__":
-    print main()
+    main()
