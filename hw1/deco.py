@@ -49,15 +49,14 @@ def memo(fn):
     '''
 
     def memo_wrapper(*args, **kwargs):
-        args_res = args + tuple(kwargs.viewitems())
+        args_res = args, tuple(kwargs.viewitems())
 
-        if not memo_wrapper.cache.get(args_res):
-            func_res = fn(*args, **kwargs)
-            memo_wrapper.cache[args_res] = func_res
+        if args_res not in cache:
+            cache[args_res] = fn(*args, **kwargs)
 
-        return memo_wrapper.cache[args_res]
+        return cache[args_res]
 
-    memo_wrapper.cache = dict()
+    cache = dict()
     return update_wrapper(memo_wrapper, fn)
 
 
