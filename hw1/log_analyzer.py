@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import glob
 import gzip
 import json
 import os
@@ -41,21 +40,12 @@ log_format = 'remote_addr remote_user http_x_real_ip time_local request status b
              'http_user_agent http_x_forwarded_for http_X_REQUEST_ID http_X_RB_USER request_time'.split()
 
 
-def html_report(report_template, report_result):
-    def factory(fn):
-        def wrapper(*args, **kwargs):
-            func_result = fn(*args, **kwargs)
-            with open(report_template) as rt:
-                t_data = rt.read()
-                t_data = t_data.replace('$table_json', json.dumps(func_result))
-                with open(report_result, 'w') as rr:
-                    rr.write(t_data)
-
-            return func_result
-
-        return wrapper
-
-    return factory
+def html_report(report_data, report_template, report_result):
+    with open(report_template) as rt:
+        t_data = rt.read()
+        t_data = t_data.replace('$table_json', json.dumps(report_data))
+        with open(report_result, 'w') as rr:
+            rr.write(t_data)
 
 
 def get_last_log_list(path):
@@ -75,13 +65,12 @@ def get_last_log_list(path):
     )
 
 
-# @html_report("report.html", "report-2017.06.30.html")
 def main():
     last_log, log_date = get_last_log_list(config['LOG_DIR'])
     report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
 
     if os.path.isfile(report_filename):
-        print "report already generated"
+        print "report {} already generated".format(report_filename)
         sys.exit(0)
 
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
@@ -132,7 +121,8 @@ def main():
             time_sum=round(s, 3)
         ))
 
-    return results_list
+    html_report(results_list, "report.html", report_filename)
+    print "report {} generated".format(report_filename)
 
 
 if __name__ == "__main__":
