@@ -49,15 +49,14 @@ def memo(fn):
     '''
 
     def memo_wrapper(*args, **kwargs):
-        args_res = args + tuple(kwargs.viewitems())
+        args_res = args + tuple(sorted(kwargs.viewitems()))
 
-        if not memo_wrapper.cache.get(args_res):
-            func_res = fn(*args, **kwargs)
-            memo_wrapper.cache[args_res] = func_res
+        if args_res not in cache:
+            cache[args_res] = fn(*args, **kwargs)
 
-        return memo_wrapper.cache[args_res]
+        return cache[args_res]
 
-    memo_wrapper.cache = dict()
+    cache = dict()
     return update_wrapper(memo_wrapper, fn)
 
 
@@ -67,16 +66,8 @@ def n_ary(fn):
     that f(x, y, z) = f(x, f(y,z)), etc. Also allow f(x) = x.
     '''
 
-    def n_ary_wrapper(*args, **kwargs):
-        largs = len(args)
-        if largs == 2:
-            return fn(*args, **kwargs)
-        elif largs == 1:
-            return fn(*(args[0], 0), **kwargs)
-        elif largs > 2:
-            first, other = args[0], args[1:]
-            other_result = n_ary_wrapper(*other, **kwargs)
-            return fn(*(first, other_result), **kwargs)
+    def n_ary_wrapper(v, *args, **kwargs):
+        return v if not args else fn(v, n_ary_wrapper(*args, **kwargs))
 
     return update_wrapper(n_ary_wrapper, fn)
 
