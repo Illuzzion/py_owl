@@ -2,14 +2,17 @@
 # -*- coding: utf-8 -*-
 import gzip
 import json
+import os
 import re
-from argparse import ArgumentParser
+import time
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
+import datetime
 
+import sys
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -37,39 +40,51 @@ log_format = 'remote_addr remote_user http_x_real_ip time_local request status b
              'http_user_agent http_x_forwarded_for http_X_REQUEST_ID http_X_RB_USER request_time'.split()
 
 
-def parse_args():
-    p = ArgumentParser()
-    p.description = "log file parser"
-    p.add_argument("file", help="path to logfile")
-    return p.parse_args()
+def html_report(report_data, report_template, report_result):
+    with open(report_template) as rt:
+        t_data = rt.read()
+        t_data = t_data.replace('$table_json', json.dumps(report_data))
+        with open(report_result, 'w') as rr:
+            rr.write(t_data)
 
 
-def html_report(report_template, report_result):
-    def factory(fn):
-        def wrapper(*args, **kwargs):
-            func_result = fn(*args, **kwargs)
-            with open(report_template) as rt:
-                t_data = rt.read()
-                t_data = t_data.replace('$table_json', json.dumps(func_result))
-                with open(report_result, 'w') as rr:
-                    rr.write(t_data)
+def get_last_log_list(path):
+    file_regexp = re.compile('(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})')
+    log_files = {fname: file_regexp.search(fname).groups()
+                 for fname in os.listdir(path)}
 
-            return func_result
+    sorted_list = sorted(log_files,
+                         key=lambda fname: time.mktime(
+                             datetime.date(*map(int, log_files[fname])).timetuple()
+                         ),
+                         reverse=True)
 
-        return wrapper
+    return (
+        os.path.join(config['LOG_DIR'], sorted_list[0]),
+        log_files[sorted_list[0]]
+    )
 
-    return factory
 
-
-@html_report("report.html", "report-2017.06.30.html")
 def main():
-    arguments = parse_args()
+    last_log, log_date = get_last_log_list(config['LOG_DIR'])
+    report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
+
+    if os.path.isfile(report_filename):
+        print "report {} already generated".format(report_filename)
+        sys.exit(0)
+
     regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
     regexp_c = re.compile(regexp_str)
     all_results_dict = dict()
     requests_count, requests_time = 0, 0
 
-    with gzip.open(arguments.file, 'rb') as f:
+    try:
+        gzip.open(last_log).close()
+        log_open = gzip.open
+    except IOError:
+        log_open = open
+
+    with log_open(last_log) as f:
         for line in f:
             parse_result = regexp_c.search(line).groupdict()
 
@@ -106,7 +121,8 @@ def main():
             time_sum=round(s, 3)
         ))
 
-    return results_list
+    html_report(results_list, "report.html", report_filename)
+    print "report {} generated".format(report_filename)
 
 
 if __name__ == "__main__":
