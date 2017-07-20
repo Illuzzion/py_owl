@@ -5,7 +5,6 @@ import json
 import os
 import re
 
-
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
@@ -13,6 +12,8 @@ import re
 import datetime
 
 import sys
+
+import bz2
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -48,7 +49,7 @@ def html_report(report_data, report_template, report_result):
             rr.write(t_data)
 
 
-def get_last_log_list(path):
+def get_last_log(path):
     file_regexp = re.compile('(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})')
     log_files = {fname: file_regexp.search(fname).groups()
                  for fname in os.listdir(path)}
@@ -63,8 +64,19 @@ def get_last_log_list(path):
     )
 
 
+def get_log_opener(file_path):
+    _, ext = os.path.splitext(file_path)
+    ext_map = {
+        '.log': open,
+        '.gz': gzip.open,
+        '.bz2': bz2.BZ2File
+    }
+
+    return ext_map.get(ext, None)
+
+
 def main():
-    last_log, log_date = get_last_log_list(config['LOG_DIR'])
+    last_log, log_date = get_last_log(config['LOG_DIR'])
     report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
 
     if os.path.isfile(report_filename):
@@ -76,13 +88,9 @@ def main():
     all_results_dict = dict()
     requests_count, requests_time = 0, 0
 
-    try:
-        gzip.open(last_log).close()
-        log_open = gzip.open
-    except IOError:
-        log_open = open
+    log_opener = get_log_opener(last_log)
 
-    with log_open(last_log) as f:
+    with log_opener(last_log) as f:
         for line in f:
             parse_result = regexp_c.search(line).groupdict()
 
