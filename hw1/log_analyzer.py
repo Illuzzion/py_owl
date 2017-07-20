@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import gzip
 import json
 import os
 import re
+import datetime
+import sys
+import bz2
+import gzip
+from collections import defaultdict
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
-import datetime
 
-import sys
-
-import bz2
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -67,12 +67,34 @@ def get_last_log(path):
 def get_log_opener(file_path):
     _, ext = os.path.splitext(file_path)
     ext_map = {
-        '.log': open,
         '.gz': gzip.open,
         '.bz2': bz2.BZ2File
     }
 
-    return ext_map.get(ext, None)
+    return ext_map.get(ext, open)
+
+
+def get_results(report_data, req_count, req_time):
+    results_list = []
+
+    for url, time_list in report_data:
+        l = len(time_list)
+        s = sum(time_list)
+        stl = sorted(time_list)
+        mediana = stl[l / 2] if l % 2 else (stl[l / 2] + stl[l / 2 - 1]) / 2.0
+
+        results_list.append(dict(
+            url=url,
+            count=l,
+            count_perc=round((l / float(req_count)) * 100, 3),
+            time_avg=round(s / l, 3),
+            time_max=round(max(time_list), 3),
+            time_med=round(mediana, 3),
+            time_perc=round(s / req_time * 100, 3),
+            time_sum=round(s, 3)
+        ))
+
+    return results_list
 
 
 def main():
@@ -83,49 +105,38 @@ def main():
         print "report {} already generated".format(report_filename)
         sys.exit(0)
 
-    regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
-    regexp_c = re.compile(regexp_str)
-    all_results_dict = dict()
-    requests_count, requests_time = 0, 0
-
     log_opener = get_log_opener(last_log)
 
-    with log_opener(last_log) as f:
-        for line in f:
-            parse_result = regexp_c.search(line).groupdict()
+    try:
+        with log_opener(last_log) as f:
+            regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
+            regexp_c = re.compile(regexp_str)
 
-            if parse_result['request'].count(" ") > 1:
-                _, url, _ = parse_result['request'].split()
-            else:
-                url = parse_result['request']
+            all_results_dict = defaultdict(list)
+            requests_count, requests_time = 0, 0
 
-            url_rec = all_results_dict.get(url, [])
-            url_rec.append(float(parse_result['request_time']))
-            all_results_dict[url] = url_rec
+            for line in f:
+                parse_result = regexp_c.search(line).groupdict()
 
-            requests_count += 1
-            requests_time += float(parse_result['request_time'])
+                if parse_result['request'].count(" ") > 1:
+                    _, url, _ = parse_result['request'].split()
+                else:
+                    url = parse_result['request']
 
-    sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): len(v), reverse=True)
+                all_results_dict[url].append(float(parse_result['request_time']))
 
-    results_list = []
+                requests_count += 1
+                requests_time += float(parse_result['request_time'])
+    except IOError:
+        raise Exception("Not supported file format!")
 
-    for url, time_list in sorted_list[:config['REPORT_SIZE']]:
-        l = len(time_list)
-        s = sum(time_list)
-        stl = sorted(time_list)
-        mediana = stl[l / 2] if l % 2 else (stl[l / 2] + stl[l / 2 - 1]) / 2.0
+    sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): sum(v), reverse=True)
 
-        results_list.append(dict(
-            url=url,
-            count=l,
-            count_perc=round((l / float(requests_count)) * 100, 3),
-            time_avg=round(s / l, 3),
-            time_max=round(max(time_list), 3),
-            time_med=round(mediana, 3),
-            time_perc=round(s / requests_time * 100, 3),
-            time_sum=round(s, 3)
-        ))
+    results_list = get_results(
+        sorted_list[:config['REPORT_SIZE']],
+        requests_count,
+        requests_time
+    )
 
     html_report(results_list, "report.html", report_filename)
     print "report {} generated".format(report_filename)
