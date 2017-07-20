@@ -44,9 +44,10 @@ log_format = 'remote_addr remote_user http_x_real_ip time_local request status b
 def html_report(report_data, report_template, report_result):
     with open(report_template) as rt:
         t_data = rt.read()
-        t_data = t_data.replace('$table_json', json.dumps(report_data))
-        with open(report_result, 'w') as rr:
-            rr.write(t_data)
+        t_data = t_data.replace('$table_json', report_data)
+
+    with open(report_result, 'w') as rr:
+        rr.write(t_data)
 
 
 def get_last_log(path):
@@ -137,8 +138,8 @@ def main():
         requests_count,
         requests_time
     )
-
-    html_report(results_list, "report.html", report_filename)
+    json_data = json.dumps(results_list)
+    html_report(json_data, "report.html", report_filename)
     print "report {} generated".format(report_filename)
 
 
