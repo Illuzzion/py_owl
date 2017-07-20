@@ -4,7 +4,7 @@ import gzip
 import json
 import os
 import re
-import time
+
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -54,9 +54,7 @@ def get_last_log_list(path):
                  for fname in os.listdir(path)}
 
     sorted_list = sorted(log_files,
-                         key=lambda fname: time.mktime(
-                             datetime.date(*map(int, log_files[fname])).timetuple()
-                         ),
+                         key=lambda fname: datetime.date(*map(int, log_files[fname])).timetuple(),
                          reverse=True)
 
     return (
