@@ -4,14 +4,14 @@
 from functools import update_wrapper
 
 
-def disable():
+def disable(fn):
     '''
     Disable a decorator by re-assigning the decorator's name
     to this function. For example, to turn off memoization:
     >>> memo = disable
     '''
 
-    return
+    return fn
 
 
 def decorator(original_func):
@@ -33,12 +33,13 @@ def countcalls(fn):
     '''Decorator that counts calls made to the function decorated.'''
 
     def countcalls_wrapper(*args, **kwargs):
-        f = globals()[fn.func_name]
-        f.calls += 1
+        # f = globals()[fn.func_name]
+        # f.calls += 1
+        countcalls_wrapper.calls = getattr(countcalls_wrapper, 'calls', 0) + 1
 
         return fn(*args, **kwargs)
 
-    fn.calls = 0
+    # fn.calls = 0
     return update_wrapper(countcalls_wrapper, fn)
 
 
@@ -49,7 +50,9 @@ def memo(fn):
     '''
 
     def memo_wrapper(*args, **kwargs):
-        args_res = args, tuple(kwargs.viewitems())
+        update_wrapper(memo_wrapper, fn)
+
+        args_res = args + tuple(sorted(kwargs.viewitems()))
 
         if args_res not in cache:
             cache[args_res] = fn(*args, **kwargs)
@@ -66,16 +69,8 @@ def n_ary(fn):
     that f(x, y, z) = f(x, f(y,z)), etc. Also allow f(x) = x.
     '''
 
-    def n_ary_wrapper(*args, **kwargs):
-        largs = len(args)
-        if largs == 2:
-            return fn(*args, **kwargs)
-        elif largs == 1:
-            return fn(*(args[0], 0), **kwargs)
-        elif largs > 2:
-            first, other = args[0], args[1:]
-            other_result = n_ary_wrapper(*other, **kwargs)
-            return fn(*(first, other_result), **kwargs)
+    def n_ary_wrapper(v, *args, **kwargs):
+        return v if not args else fn(v, n_ary_wrapper(*args, **kwargs))
 
     return update_wrapper(n_ary_wrapper, fn)
 
