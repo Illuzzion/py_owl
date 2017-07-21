@@ -69,7 +69,7 @@ def main():
     last_log, log_date = get_last_log_list(config['LOG_DIR'])
     report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
 
-    if os.path.isfile(report_filename):
+    if os.path.exists(report_filename):
         print "report {} already generated".format(report_filename)
         sys.exit(0)
 
