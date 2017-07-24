@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import gzip
 import json
 import os
 import re
-import time
+import datetime
+import sys
+import bz2
+import gzip
+from collections import defaultdict
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
-import datetime
 
-import sys
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -43,20 +44,19 @@ log_format = 'remote_addr remote_user http_x_real_ip time_local request status b
 def html_report(report_data, report_template, report_result):
     with open(report_template) as rt:
         t_data = rt.read()
-        t_data = t_data.replace('$table_json', json.dumps(report_data))
-        with open(report_result, 'w') as rr:
-            rr.write(t_data)
+        t_data = t_data.replace('$table_json', report_data)
+
+    with open(report_result, 'w') as rr:
+        rr.write(t_data)
 
 
-def get_last_log_list(path):
+def get_last_log(path):
     file_regexp = re.compile('(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})')
     log_files = {fname: file_regexp.search(fname).groups()
                  for fname in os.listdir(path)}
 
     sorted_list = sorted(log_files,
-                         key=lambda fname: time.mktime(
-                             datetime.date(*map(int, log_files[fname])).timetuple()
-                         ),
+                         key=lambda fname: datetime.date(*map(int, log_files[fname])).timetuple(),
                          reverse=True)
 
     return (
@@ -65,46 +65,20 @@ def get_last_log_list(path):
     )
 
 
-def main():
-    last_log, log_date = get_last_log_list(config['LOG_DIR'])
-    report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
+def get_log_opener(file_path):
+    _, ext = os.path.splitext(file_path)
+    ext_map = {
+        '.gz': gzip.open,
+        '.bz2': bz2.BZ2File
+    }
 
-    if os.path.isfile(report_filename):
-        print "report {} already generated".format(report_filename)
-        sys.exit(0)
+    return ext_map.get(ext, open)
 
-    regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
-    regexp_c = re.compile(regexp_str)
-    all_results_dict = dict()
-    requests_count, requests_time = 0, 0
 
-    try:
-        gzip.open(last_log).close()
-        log_open = gzip.open
-    except IOError:
-        log_open = open
-
-    with log_open(last_log) as f:
-        for line in f:
-            parse_result = regexp_c.search(line).groupdict()
-
-            if parse_result['request'].count(" ") > 1:
-                _, url, _ = parse_result['request'].split()
-            else:
-                url = parse_result['request']
-
-            url_rec = all_results_dict.get(url, [])
-            url_rec.append(float(parse_result['request_time']))
-            all_results_dict[url] = url_rec
-
-            requests_count += 1
-            requests_time += float(parse_result['request_time'])
-
-    sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): len(v), reverse=True)
-
+def get_results(report_data, req_count, req_time):
     results_list = []
 
-    for url, time_list in sorted_list[:config['REPORT_SIZE']]:
+    for url, time_list in report_data:
         l = len(time_list)
         s = sum(time_list)
         stl = sorted(time_list)
@@ -113,15 +87,59 @@ def main():
         results_list.append(dict(
             url=url,
             count=l,
-            count_perc=round((l / float(requests_count)) * 100, 3),
+            count_perc=round((l / float(req_count)) * 100, 3),
             time_avg=round(s / l, 3),
             time_max=round(max(time_list), 3),
             time_med=round(mediana, 3),
-            time_perc=round(s / requests_time * 100, 3),
+            time_perc=round(s / req_time * 100, 3),
             time_sum=round(s, 3)
         ))
 
-    html_report(results_list, "report.html", report_filename)
+    return results_list
+
+
+def main():
+    last_log, log_date = get_last_log(config['LOG_DIR'])
+    report_filename = os.path.join(config['REPORT_DIR'], "report-{}.{}.{}.html".format(*log_date))
+
+    if os.path.isfile(report_filename):
+        print "report {} already generated".format(report_filename)
+        sys.exit(0)
+
+    log_opener = get_log_opener(last_log)
+
+    try:
+        with log_opener(last_log) as f:
+            regexp_str = r"^" + r"\s+".join([regexp_dict[rx] for rx in log_format]) + r"$"
+            regexp_c = re.compile(regexp_str)
+
+            all_results_dict = defaultdict(list)
+            requests_count, requests_time = 0, 0
+
+            for line in f:
+                parse_result = regexp_c.search(line).groupdict()
+
+                if parse_result['request'].count(" ") > 1:
+                    _, url, _ = parse_result['request'].split()
+                else:
+                    url = parse_result['request']
+
+                all_results_dict[url].append(float(parse_result['request_time']))
+
+                requests_count += 1
+                requests_time += float(parse_result['request_time'])
+    except IOError:
+        raise Exception("Not supported file format!")
+
+    sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): sum(v), reverse=True)
+
+    results_list = get_results(
+        sorted_list[:config['REPORT_SIZE']],
+        requests_count,
+        requests_time
+    )
+    json_data = json.dumps(results_list)
+    html_report(json_data, "report.html", report_filename)
     print "report {} generated".format(report_filename)
 
 
