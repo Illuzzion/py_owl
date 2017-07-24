@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import bz2
+import datetime
+import gzip
 import json
 import os
 import re
-import datetime
 import sys
-import bz2
-import gzip
 from collections import defaultdict
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
@@ -14,6 +14,12 @@ from collections import defaultdict
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
 
+
+config = {
+    "REPORT_SIZE": 1000,
+    "REPORT_DIR": "./reports",
+    "LOG_DIR": "./log"
+}
 
 regexp_dict = {
     'remote_addr': r"(?P<remote_addr>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
@@ -31,14 +37,12 @@ regexp_dict = {
     'request_time': r'(?P<request_time>[\.\d]+)'
 }
 
-config = {
-    "REPORT_SIZE": 1000,
-    "REPORT_DIR": "./reports",
-    "LOG_DIR": "./log"
-}
-
 log_format = 'remote_addr remote_user http_x_real_ip time_local request status body_bytes_sent http_referer ' \
              'http_user_agent http_x_forwarded_for http_X_REQUEST_ID http_X_RB_USER request_time'.split()
+
+
+class LogAnalyzerException(Exception):
+    pass
 
 
 def html_report(report_data, report_template, report_result):
@@ -129,7 +133,7 @@ def main():
                 requests_count += 1
                 requests_time += float(parse_result['request_time'])
     except IOError:
-        raise Exception("Not supported file format!")
+        raise LogAnalyzerException("Not supported file format!")
 
     sorted_list = sorted(all_results_dict.iteritems(), key=lambda (k, v): sum(v), reverse=True)
     del all_results_dict
@@ -139,6 +143,7 @@ def main():
         requests_count,
         requests_time
     )
+
     json_data = json.dumps(results_list)
     html_report(json_data, "report.html", report_filename)
     print "report {} generated".format(report_filename)
