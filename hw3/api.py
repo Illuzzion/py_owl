@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Нужно реализовать простое HTTP API сервиса скоринга. Шаблон уже есть в api.py, тесты в test.py.
-# API необычно тем, что польщователи дергают методы POST запросами. Чтобы получить результат
+# API необычно тем, что пользователи дергают методы POST запросами. Чтобы получить результат
 # пользователь отправляет в POST запросе валидный JSON определенного формата на локейшн /method
 
 # Структура json-запроса:
@@ -53,7 +53,7 @@
 
 # Метод clients_interests.
 # Аргументы:
-# client_ids - массив числе, обязательно, не пустое
+# client_ids - массив чисел, обязательно, не пустое
 # date - дата в формате DD.MM.YYYY, опционально, может быть пустым
 
 # Валидация аругементов:
@@ -78,6 +78,7 @@ import logging
 import uuid
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from optparse import OptionParser
+from pprint import pprint
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -105,44 +106,114 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    pass
+class Field(object):
+    def __init__(self, requried, nullable):
+        self.required = requried
+        self.nullable = nullable
+        self._value = None
+
+    def is_valid(self):
+        pass
 
 
-class ArgumentsField(object):
-    pass
+class CharField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(CharField, self).__init__(requried, nullable)
+
+
+class ArgumentsField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(ArgumentsField, self).__init__(requried, nullable)
 
 
 class EmailField(CharField):
+    """
+    email - строка, в которой есть @, опционально, может быть пустым
+    """
+
+    def is_valid(self):
+        return '@' in self._value
+
+
+class PhoneField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(PhoneField, self).__init__(requried, nullable)
+
+    @property
+    def number(self):
+        return self._value
+
+    @number.setter
+    def number(self, value):
+        self._value = value
+
+    def is_valid(self):
+        """
+         phone - строка или число, длиной 11, начинается с 7, опционально, может быть пустым
+        """
+        return len(self._value) and str(self._value).startswith('7')
+
+
+class ApiDateException(Exception):
     pass
 
 
-class PhoneField(object):
-    pass
+class DateField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(DateField, self).__init__(requried, nullable)
+
+    @property
+    def date(self):
+        return self._value
+
+    @date.setter
+    def date(self, value):
+        try:
+            day, month, year = map(int, str(value).split('.'))
+            self._value = datetime.datetime(year=year, month=month, day=day)
+        except ValueError as e:
+            raise ApiDateException('Wrong DateField value: %s' % e.args)
 
 
-class DateField(object):
-    pass
+class BirthDayField(DateField):
+    def is_valid(self):
+        """
+        birthday - дата в формате DD.MM.YYYY, с которой прошло не больше 70 лет, опционально, может быть пустым
+        """
+        return (datetime.datetime.now() - self.date) < datetime.datetime(year=70)
 
 
-class BirthDayField(object):
-    pass
+class GenderField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(GenderField, self).__init__(requried, nullable)
+
+    def is_valid(self):
+        """
+        gender - число 0, 1 или 2, опционально, может быть пустым
+        """
+        return str(self._value).isdigit() and int(self._value) in xrange(0, 3)
 
 
-class GenderField(object):
-    pass
+class ClientIDsField(Field):
+    def __init__(self, requried=True, nullable=True):
+        super(ClientIDsField, self).__init__(requried, nullable)
 
 
-class ClientIDsField(object):
-    pass
+class Request(object):
+    def __init__(self, req_data):
+        for name, value in req_data['body']['arguments'].iteritems():
+            attr = getattr(self, name)
+            attr._value = value
+        self.login = req_data['body']['login']
+        self.token = req_data['body']['token']
 
 
-class ClientsInterestsRequest(object):
+class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(requried=True)
     date = DateField(requried=False, nullable=True)
 
 
-class OnlineScoreRequest(object):
+class OnlineScoreRequest(Request):
     first_name = CharField(requried=False, nullable=True)
     last_name = CharField(requried=False, nullable=True)
     email = EmailField(requried=False, nullable=True)
@@ -151,7 +222,7 @@ class OnlineScoreRequest(object):
     gender = GenderField(requried=False, nullable=True)
 
 
-class MethodRequest(object):
+class MethodRequest(Request):
     account = CharField(requried=False, nullable=True)
     login = CharField(requried=True, nullable=True)
     token = CharField(requried=True, nullable=True)
@@ -175,12 +246,26 @@ def check_auth(request):
 
 def method_handler(request, ctx):
     response, code = None, None
+    pprint(request)
+
+    req_types = {
+        'online_score': OnlineScoreRequest,
+    }
+
+    try:
+        method_name = request['body']['method']
+        req_object = req_types[method_name](request)
+        auth = check_auth(req_object)
+    except Exception as e:
+        # print e, e.args
+        pass
+
     return response, code
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
-        "method": method_handler
+        "method": method_handler,
     }
 
     def get_request_id(self, headers):
