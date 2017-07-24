@@ -110,10 +110,13 @@ class Field(object):
     def __init__(self, requried, nullable):
         self.required = requried
         self.nullable = nullable
-        self._value = None
+        self._value = None if nullable else str()
 
-    def is_valid(self):
-        pass
+    def __get__(self, instance, owner):
+        return getattr(self, '_value', None if self.nullable else str())
+
+    def __set__(self, instance, value):
+        return setattr(self, '_value', value)
 
 
 class CharField(Field):
@@ -139,14 +142,6 @@ class PhoneField(Field):
     def __init__(self, requried=True, nullable=True):
         super(PhoneField, self).__init__(requried, nullable)
 
-    @property
-    def number(self):
-        return self._value
-
-    @number.setter
-    def number(self, value):
-        self._value = value
-
     def is_valid(self):
         """
          phone - строка или число, длиной 11, начинается с 7, опционально, может быть пустым
@@ -162,17 +157,17 @@ class DateField(Field):
     def __init__(self, requried=True, nullable=True):
         super(DateField, self).__init__(requried, nullable)
 
-    @property
-    def date(self):
-        return self._value
-
-    @date.setter
-    def date(self, value):
-        try:
-            day, month, year = map(int, str(value).split('.'))
-            self._value = datetime.datetime(year=year, month=month, day=day)
-        except ValueError as e:
-            raise ApiDateException('Wrong DateField value: %s' % e.args)
+        # @property
+        # def date(self):
+        #     return self._value
+        #
+        # @date.setter
+        # def date(self, value):
+        #     try:
+        #         day, month, year = map(int, str(value).split('.'))
+        #         self._value = datetime.datetime(year=year, month=month, day=day)
+        #     except ValueError as e:
+        #         raise ApiDateException('Wrong DateField value: %s' % e.args)
 
 
 class BirthDayField(DateField):
@@ -199,22 +194,12 @@ class ClientIDsField(Field):
         super(ClientIDsField, self).__init__(requried, nullable)
 
 
-class Request(object):
-    def __init__(self, req_data):
-        for name, value in req_data['body']['arguments'].iteritems():
-            attr = getattr(self, name)
-            attr._value = value
-        self.login = req_data['body']['login']
-        self.token = req_data['body']['token']
-        self.token = req_data['body']['account']
-
-
-class ClientsInterestsRequest(Request):
+class ClientsInterestsRequest(object):
     client_ids = ClientIDsField(requried=True)
     date = DateField(requried=False, nullable=True)
 
 
-class OnlineScoreRequest(Request):
+class OnlineScoreRequest(object):
     first_name = CharField(requried=False, nullable=True)
     last_name = CharField(requried=False, nullable=True)
     email = EmailField(requried=False, nullable=True)
@@ -223,12 +208,18 @@ class OnlineScoreRequest(Request):
     gender = GenderField(requried=False, nullable=True)
 
 
-class MethodRequest(Request):
+class MethodRequest(object):
     account = CharField(requried=False, nullable=True)
     login = CharField(requried=True, nullable=True)
     token = CharField(requried=True, nullable=True)
     arguments = ArgumentsField(requried=True, nullable=True)
     method = CharField(requried=True, nullable=True)
+
+    def __init__(self, req):
+        for fld in ('account', 'login', 'token', 'method', 'arguments'):
+            setattr(self, fld, req.get(fld))
+
+        self.login.is_valid()
 
     @property
     def is_admin(self):
@@ -247,19 +238,13 @@ def check_auth(request):
 
 def method_handler(request, ctx):
     response, code = None, None
-    pprint(request)
 
     req_types = {
         'online_score': OnlineScoreRequest,
     }
 
-    try:
-        method_name = request['body']['method']
-        req_object = req_types[method_name](request)
-        auth = check_auth(req_object)
-    except Exception as e:
-        # print e, e.args
-        pass
+    request_handler = MethodRequest(request['body'])
+    authorized = check_auth(request_handler)
 
     return response, code
 
