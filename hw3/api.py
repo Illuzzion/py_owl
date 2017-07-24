@@ -206,6 +206,7 @@ class Request(object):
             attr._value = value
         self.login = req_data['body']['login']
         self.token = req_data['body']['token']
+        self.token = req_data['body']['account']
 
 
 class ClientsInterestsRequest(Request):
