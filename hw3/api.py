@@ -244,7 +244,7 @@ class MethodRequest(Request):
         print routed_class, ctx
 
         rc = routed_class(self.arguments, ctx)
-        print rc
+        print 'routed class', rc
         return rc.results()
 
     @property
@@ -272,7 +272,7 @@ class OnlineScoreRequest(Request):
         super(OnlineScoreRequest, self).__init__(request, ctx)
         print request
 
-    def result(self):
+    def results(self):
         # Валидация аругементов:
         # аргументы валидны, если валидны все поля по отдельности и если присутсвует хоть одна пара
         # phone-email, first name-last name, gender-birthday с непустыми значениями.
@@ -282,7 +282,12 @@ class OnlineScoreRequest(Request):
             'gender-birthday': (self.gender, self.birthday)
         }
 
+        for name, rule in rules.items():
+            print name, any(rule)
         validation_errors = [name for name, rule in rules.items() if any(rule)]
+
+        if not validation_errors:
+            return {"score": 3}, OK
 
 
 def check_auth(request):
