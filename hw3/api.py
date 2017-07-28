@@ -225,6 +225,10 @@ class Request(object):
                 except ApiException:
                     self.errors.append((f_name, f_value))
 
+        print self.__class__, 'errors', bool(self.errors)
+
+        return False if self.errors else True
+
 
 class MethodRequest(Request):
     account = CharField(requried=False, nullable=True)
@@ -236,8 +240,12 @@ class MethodRequest(Request):
     def __init__(self, req, routed_class, ctx):
         super(MethodRequest, self).__init__(req, ctx)
 
+        # TODO: сделать проверку прав доступа
         print routed_class, ctx
+
         rc = routed_class(self.arguments, ctx)
+        print rc
+        return rc.results()
 
     @property
     def is_admin(self):
@@ -259,6 +267,22 @@ class OnlineScoreRequest(Request):
     phone = PhoneField(requried=False, nullable=True)
     birthday = BirthDayField(requried=False, nullable=True)
     gender = GenderField(requried=False, nullable=True)
+
+    def __init__(self, request, ctx):
+        super(OnlineScoreRequest, self).__init__(request, ctx)
+        print request
+
+    def result(self):
+        # Валидация аругементов:
+        # аргументы валидны, если валидны все поля по отдельности и если присутсвует хоть одна пара
+        # phone-email, first name-last name, gender-birthday с непустыми значениями.
+        rules = {
+            'phone-email': (self.phone, self.email),
+            'first name-last name': (self.first_name, self.last_name),
+            'gender-birthday': (self.gender, self.birthday)
+        }
+
+        validation_errors = [name for name, rule in rules.items() if any(rule)]
 
 
 def check_auth(request):
