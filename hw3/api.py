@@ -70,7 +70,7 @@
 
 # Требование: в результате в git должно быть только два(2!) файлика: api.py, test.py.
 # Deadline: следующее занятие
-
+import abc
 import datetime
 import hashlib
 import json
@@ -78,7 +78,6 @@ import logging
 import uuid
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from optparse import OptionParser
-from pprint import pprint
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -107,6 +106,8 @@ GENDERS = {
 
 
 class Field(object):
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, requried, nullable):
         self.required = requried
         self.nullable = nullable
@@ -116,17 +117,30 @@ class Field(object):
         return getattr(self, '_value', None if self.nullable else str())
 
     def __set__(self, instance, value):
-        return setattr(self, '_value', value)
+        if self.is_valid(value):
+            setattr(self, '_value', value)
+        else:
+            raise ApiException("Not Valid")
+
+    @abc.abstractmethod
+    def is_valid(self, value):
+        pass
 
 
 class CharField(Field):
     def __init__(self, requried=True, nullable=True):
         super(CharField, self).__init__(requried, nullable)
 
+    def is_valid(self, value):
+        return True if isinstance(value, unicode) else False
+
 
 class ArgumentsField(Field):
     def __init__(self, requried=True, nullable=True):
         super(ArgumentsField, self).__init__(requried, nullable)
+
+    def is_valid(self, value):
+        return True if isinstance(value, dict) else False
 
 
 class EmailField(CharField):
@@ -134,22 +148,24 @@ class EmailField(CharField):
     email - строка, в которой есть @, опционально, может быть пустым
     """
 
-    def is_valid(self):
-        return '@' in self._value
+    def is_valid(self, value):
+        return super(EmailField, self).is_valid(value) and '@' in value
 
 
-class PhoneField(Field):
+class PhoneField(CharField):
     def __init__(self, requried=True, nullable=True):
         super(PhoneField, self).__init__(requried, nullable)
 
-    def is_valid(self):
+    def is_valid(self, value):
         """
          phone - строка или число, длиной 11, начинается с 7, опционально, может быть пустым
         """
-        return len(self._value) and str(self._value).startswith('7')
+        if super(PhoneField, self).is_valid(value):
+            return str(value).isdigit() and len(value) == 11 and str(value).startswith('7')
+        return False
 
 
-class ApiDateException(Exception):
+class ApiException(Exception):
     pass
 
 
@@ -157,73 +173,92 @@ class DateField(Field):
     def __init__(self, requried=True, nullable=True):
         super(DateField, self).__init__(requried, nullable)
 
-        # @property
-        # def date(self):
-        #     return self._value
-        #
-        # @date.setter
-        # def date(self, value):
-        #     try:
-        #         day, month, year = map(int, str(value).split('.'))
-        #         self._value = datetime.datetime(year=year, month=month, day=day)
-        #     except ValueError as e:
-        #         raise ApiDateException('Wrong DateField value: %s' % e.args)
+    def is_valid(self, value):
+        try:
+            datetime.datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            return False
+
+        return True
 
 
 class BirthDayField(DateField):
-    def is_valid(self):
+    def is_valid(self, value):
         """
         birthday - дата в формате DD.MM.YYYY, с которой прошло не больше 70 лет, опционально, может быть пустым
         """
-        return (datetime.datetime.now() - self.date) < datetime.datetime(year=70)
+        d = datetime.datetime.now() - datetime.datetime.strptime(value, '%d.%m.%Y')
+        return d.days < 365 * 70
 
 
 class GenderField(Field):
     def __init__(self, requried=True, nullable=True):
         super(GenderField, self).__init__(requried, nullable)
 
-    def is_valid(self):
+    def is_valid(self, value):
         """
         gender - число 0, 1 или 2, опционально, может быть пустым
         """
-        return str(self._value).isdigit() and int(self._value) in xrange(0, 3)
+        return str(value).isdigit() and value in GENDERS
 
 
 class ClientIDsField(Field):
     def __init__(self, requried=True, nullable=True):
         super(ClientIDsField, self).__init__(requried, nullable)
 
-
-class ClientsInterestsRequest(object):
-    client_ids = ClientIDsField(requried=True)
-    date = DateField(requried=False, nullable=True)
+    def is_valid(self, value):
+        return True
 
 
-class OnlineScoreRequest(object):
-    first_name = CharField(requried=False, nullable=True)
-    last_name = CharField(requried=False, nullable=True)
-    email = EmailField(requried=False, nullable=True)
-    phone = PhoneField(requried=False, nullable=True)
-    birthday = BirthDayField(requried=False, nullable=True)
-    gender = GenderField(requried=False, nullable=True)
+class Request(object):
+    errors = []
+
+    def __init__(self, req, ctx):
+        self.validate(req)
+
+    def validate(self, req):
+        for f_name in dir(self):
+            f_value = req.get(f_name, None)
+            if f_value:
+                try:
+                    setattr(self, f_name, f_value)
+                except ApiException:
+                    self.errors.append((f_name, f_value))
 
 
-class MethodRequest(object):
+class MethodRequest(Request):
     account = CharField(requried=False, nullable=True)
     login = CharField(requried=True, nullable=True)
     token = CharField(requried=True, nullable=True)
     arguments = ArgumentsField(requried=True, nullable=True)
     method = CharField(requried=True, nullable=True)
 
-    def __init__(self, req):
-        for fld in ('account', 'login', 'token', 'method', 'arguments'):
-            setattr(self, fld, req.get(fld))
+    def __init__(self, req, routed_class, ctx):
+        super(MethodRequest, self).__init__(req, ctx)
 
-        self.login.is_valid()
+        print routed_class, ctx
+        rc = routed_class(self.arguments, ctx)
 
     @property
     def is_admin(self):
         return self.login == ADMIN_LOGIN
+
+
+class ClientsInterestsRequest(MethodRequest):
+    client_ids = ClientIDsField(requried=True)
+    date = DateField(requried=False, nullable=True)
+
+    # def is_valid(self.value):
+    #   pass
+
+
+class OnlineScoreRequest(Request):
+    first_name = CharField(requried=False, nullable=True)
+    last_name = CharField(requried=False, nullable=True)
+    email = EmailField(requried=False, nullable=True)
+    phone = PhoneField(requried=False, nullable=True)
+    birthday = BirthDayField(requried=False, nullable=True)
+    gender = GenderField(requried=False, nullable=True)
 
 
 def check_auth(request):
@@ -241,9 +276,11 @@ def method_handler(request, ctx):
 
     req_types = {
         'online_score': OnlineScoreRequest,
+        "clients_interests": ClientsInterestsRequest,
     }
+    method_handler = req_types[request['body']['method']]
+    request_handler = MethodRequest(request['body'], method_handler, ctx)
 
-    request_handler = MethodRequest(request['body'])
     authorized = check_auth(request_handler)
 
     return response, code
@@ -272,6 +309,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:
                 try:
+                    # функция method_handler должна вернуть кортеж из ответа и кода ответа
                     response, code = self.router[path]({"body": request, "headers": self.headers}, context)
                 except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
