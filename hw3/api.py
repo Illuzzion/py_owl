@@ -238,21 +238,32 @@ class MethodRequest(Request):
     method = CharField(requried=True, nullable=True)
 
     def __init__(self, req, routed_class, ctx):
+        """
+        :param req: содержимое запроса
+        :param routed_class: класс который будет обрабатывать данные (определен по имени метода)
+        :param ctx: контекст
+        """
+        print routed_class, ctx
+        # обработаем полученные данные родительским методом
+        # инициализация может кинуть исключение
+        # TODO: завернуть в try except
         super(MethodRequest, self).__init__(req, ctx)
 
         # TODO: сделать проверку прав доступа
-        print routed_class, ctx
-
+        # если дошли до сюда, то
+        # создаем класс обработчик для аргументов
         rc = routed_class(self.arguments, ctx)
         print 'routed class', rc
-        return rc.results()
+        results = rc.results()
+
+        return results
 
     @property
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
 
-class ClientsInterestsRequest(MethodRequest):
+class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(requried=True)
     date = DateField(requried=False, nullable=True)
 
@@ -284,7 +295,7 @@ class OnlineScoreRequest(Request):
 
         for name, rule in rules.items():
             print name, any(rule)
-        validation_errors = [name for name, rule in rules.items() if any(rule)]
+        validation_errors = [name for name, rule in rules.items() if not any(rule)]
 
         if not validation_errors:
             return {"score": 3}, OK
@@ -301,13 +312,26 @@ def check_auth(request):
 
 
 def method_handler(request, ctx):
+    """
+    обработчик и маршрутизатор методов
+    :param request:
+    :param ctx:
+    :return:
+    """
     response, code = None, None
-
+    # карта с обработчиками по имени метода
     req_types = {
         'online_score': OnlineScoreRequest,
         "clients_interests": ClientsInterestsRequest,
     }
-    method_handler = req_types[request['body']['method']]
+
+    # получим имя метода из реквеста
+    method = request['body'].get('method')
+
+    # получим класс обработчик, если он есть в dict req_types
+    method_handler = req_types[method]
+
+    # в MethodRequest отправим тело запроса, класс обработчик и контекст
     request_handler = MethodRequest(request['body'], method_handler, ctx)
 
     authorized = check_auth(request_handler)
@@ -339,7 +363,13 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             if path in self.router:
                 try:
                     # функция method_handler должна вернуть кортеж из ответа и кода ответа
-                    response, code = self.router[path]({"body": request, "headers": self.headers}, context)
+                    handler = self.router[path]
+                    print handler
+
+                    class_handler = handler({"body": request, "headers": self.headers}, context)
+
+                    print class_handler
+                    # response, code =
                 except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
