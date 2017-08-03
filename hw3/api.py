@@ -114,9 +114,11 @@ class Field(object):
         self._value = None if nullable else str()
 
     def __get__(self, instance, owner):
+        print '__get__ instance:', instance, 'owner', owner
         return getattr(self, '_value', None if self.nullable else str())
 
     def __set__(self, instance, value):
+        print '__set__ instance:', instance, 'value', value
         if self.is_valid(value):
             setattr(self, '_value', value)
         else:
@@ -213,19 +215,18 @@ class ClientIDsField(Field):
 class Request(object):
     errors = []
 
-    def __init__(self, req, ctx):
-        self.validate(req)
+    # def __init__(self, req, ctx):
+    #     self.validate_request(req)
 
-    def validate(self, req):
-        for f_name in dir(self):
-            f_value = req.get(f_name, None)
-            if f_value:
-                try:
-                    setattr(self, f_name, f_value)
-                except ApiException:
-                    self.errors.append((f_name, f_value))
+    def validate_request(self, req):
+        # список полей, которые есть у текущего класса и присланы в реквесте
+        fields = [f_name for f_name in dir(self) if f_name in req]
 
-        print self.__class__, 'errors', bool(self.errors)
+        try:
+            for field in fields:
+                setattr(self, field, req[field])
+        except (KeyError, ApiException) as e:
+            self.errors.append((e.message, e.args))
 
         return False if self.errors else True
 
@@ -247,7 +248,10 @@ class MethodRequest(Request):
         # обработаем полученные данные родительским методом
         # инициализация может кинуть исключение
         # TODO: завернуть в try except
-        super(MethodRequest, self).__init__(req, ctx)
+        try:
+            super(MethodRequest, self).__init__(req, ctx)
+        except Exception as e:
+            raise e
 
         # TODO: сделать проверку прав доступа
         # если дошли до сюда, то
@@ -257,6 +261,9 @@ class MethodRequest(Request):
         results = rc.results()
 
         return results
+
+    def validate_request(self, req):
+        validation_result = super(MethodRequest, self).validate_request(req)
 
     @property
     def is_admin(self):
@@ -325,16 +332,19 @@ def method_handler(request, ctx):
         "clients_interests": ClientsInterestsRequest,
     }
 
-    # получим имя метода из реквеста
-    method = request['body'].get('method')
+    try:
+        # получим имя метода из реквеста
+        method = request['body'].get('method')
 
-    # получим класс обработчик, если он есть в dict req_types
-    method_handler = req_types[method]
+        # получим класс обработчик, если он есть в dict req_types
+        method_handler = req_types[method]
 
-    # в MethodRequest отправим тело запроса, класс обработчик и контекст
-    request_handler = MethodRequest(request['body'], method_handler, ctx)
+        # создадим класс MethodRequest и отправим в него тело запроса, класс обработчик и контекст
+        request_handler = MethodRequest(request['body'], method_handler, ctx)
 
-    authorized = check_auth(request_handler)
+        authorized = check_auth(request_handler)
+    except KeyError as e:
+        print e.message, e.args
 
     return response, code
 
